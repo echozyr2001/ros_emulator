@@ -10,7 +10,7 @@ use rand::Rng;
 enum Syscall {
   Read,
   Write(String),
-  Spawn(String, Vec<String>), // (func_name, args)
+  Spawn(String, String), // (func_name, args)
 }
 
 struct OS<'a> {
@@ -40,28 +40,29 @@ impl<'a> OS<'a> {
       // remove and get the process instance
       let mut current = self.procs.remove(index);
       // do step and get syscall and args
-      let syscall = current.step()?;
-      // match the syscall
-      match syscall {
-        Syscall::Read => {
-          let retval = rand::thread_rng().gen_range(0..2);
-          current.retval = Some(retval);
-        },
-        Syscall::Write(s) => {
-          self.buffer.push_str(s.as_str());
-        },
-        Syscall::Spawn(func_name, args) => {
-          // create a thread
-          let thread = lua_env.create_thread(func_name)?;
-          // create a process
-          let p = Process::new(thread);
-          self.procs.push(p);
-          println!("todo");
-        },
+      // if err, means current was done
+      if let Ok(syscall) = current.step() {
+        // match the syscall
+        match syscall {
+          Syscall::Read => {
+            let retval = rand::thread_rng().gen_range(0..2);
+            current.retval = Some(format!("{retval}"));
+          },
+          Syscall::Write(s) => {
+            self.buffer.push_str(s.as_str());
+          },
+          Syscall::Spawn(func_name, args) => {
+            // create a thread
+            let thread = lua_env.create_thread(func_name)?;
+            // create a process
+            let mut p = Process::new(thread);
+            p.retval = Some(args);
+            self.procs.push(p);
+          },
+        }
+        // put process back if it is not dead
+        self.procs.insert(index, current);
       }
-      // TODO
-      // put process back if it is not dead
-      self.procs.insert(index, current);
     }
     Ok(())
   }
@@ -70,7 +71,7 @@ impl<'a> OS<'a> {
 #[derive(Clone, PartialEq, Debug)]
 struct Process<'a> {
   thread: Thread<'a>,
-  retval: Option<u8>,
+  retval: Option<String>,
 }
 
 impl<'a> Process<'a> {
@@ -97,7 +98,7 @@ impl<'a> Process<'a> {
     // <参数，返回值>
     // 返回的就是yield中的内容
     // 👇 { "spawn", {process, "A"} }
-    let values = self.thread.resume::<_, LuaTable>(self.retval)?;
+    let values = self.thread.resume::<_, LuaTable>(self.retval.clone())?;
 
     // 👇 "spawn"
     let action = values.get::<_, LuaString>(1)?;
@@ -113,10 +114,7 @@ impl<'a> Process<'a> {
       Ok("spawn") => {
         // 👇 process
         let func = args.get::<_, String>(1)?;
-        let args = args
-          .sequence_values::<String>()
-          .skip(1)
-          .collect::<Result<Vec<_>, _>>()?;
+        let args = args.get::<_, String>(2)?;
         return Ok(Syscall::Spawn(func, args));
       },
       _ => panic!("unknown action"),
@@ -127,13 +125,15 @@ impl<'a> Process<'a> {
 fn main() -> Result<(), LuaError> {
   let lua_code = r#"
     function process(name)
-      sys_write(name) 
+      for _ = 1, 5 do
+        sys_write(name) 
+      end
     end
     function main()
       local a = sys_read()
       print(a)
-      sys_spawn(process, "A")
-      sys_spawn(process, "A")
+      sys_spawn("process", "A")
+      sys_spawn("process", "B")
     end
   "#;
 
@@ -142,5 +142,6 @@ fn main() -> Result<(), LuaError> {
 
   let mut os = OS::new(&lua_env);
   os.run(&lua_env)?;
+  println!("{}", os.buffer);
   Ok(())
 }
