@@ -88,4 +88,8 @@ impl<'a> OS<'a> {
     }
     Ok(())
   }
+
+  pub fn print_buffer(&self) {
+    println!("buffer: {}", self.buffer);
+  }
 }
