@@ -50,15 +50,16 @@ pub struct OS<'a> {
 
 impl<'a> OS<'a> {
   pub fn new(lua_env: &'a LEnv) -> Result<OS, LuaError> {
-    if let Ok(_) = lua_env.exec() {
-      let co_main: Thread = lua_env.globals().get("co_main")?;
-      let main_process = Process::new(co_main);
-      Ok(OS {
-        procs: vec![main_process],
-        buffer: String::new(),
-      })
-    } else {
-      panic!("can't exec lua code")
+    match lua_env.exec() {
+      Ok(_) => {
+        let co_main: Thread = lua_env.globals().get::<_, Thread>("co_main")?;
+        let main_process = Process::new(co_main);
+        Ok(OS {
+          procs: vec![main_process],
+          buffer: String::new(),
+        })
+      },
+      Err(e) => Err(e),
     }
   }
 
