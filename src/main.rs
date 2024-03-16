@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod cli;
 mod lua_env;
 mod os;
@@ -21,5 +19,6 @@ fn main() -> Result<(), LuaError> {
   let mut os = OS::new(&lua_env)?;
   os.run(&lua_env)?;
   os.print_buffer();
+
   Ok(())
 }
